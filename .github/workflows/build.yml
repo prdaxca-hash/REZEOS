@@ -16,15 +16,35 @@ jobs:
       - name: Install tools
         run: |
           sudo apt update
-          sudo apt install -y curl xz-utils e2fsprogs erofs-utils file android-sdk-libsparse-utils
+          sudo apt install -y curl xz-utils e2fsprogs erofs-utils file android-sdk-libsparse-utils 7zip
 
-      - name: Download Axion GSI
+      - name: Download LineageOS GSI
         run: |
           set -euo pipefail
           source config/reze.env
-          mkdir -p work out
-          curl -fL --retry 5 --retry-delay 3 -o work/base.img.xz "$BASE_URL"
-          xz -dc work/base.img.xz > work/base.img
+          mkdir -p work/archive work/extracted out
+
+          echo '--- downloading LineageOS GSI archive ---'
+          curl -fL --retry 5 --retry-delay 3 -o work/base.7z "$BASE_URL"
+          file work/base.7z
+
+          echo '--- archive contents ---'
+          7z l work/base.7z | tail -30
+
+          echo '--- extracting archive ---'
+          7z x -y -owork/extracted work/base.7z
+
+          echo '--- extracted files ---'
+          find work/extracted -type f -maxdepth 5 -printf '%p (%s bytes)\n' | head -100
+
+          IMAGE="$(find work/extracted -type f \( -iname '*.img' -o -iname '*.img.raw' \) -print -quit)"
+          if [ -z "$IMAGE" ]; then
+            echo 'No Android image found in LineageOS archive.'
+            exit 1
+          fi
+
+          echo "Using image: $IMAGE"
+          cp "$IMAGE" work/base.img
           file work/base.img
 
       - name: Convert sparse image and detect filesystem
