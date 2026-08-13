@@ -39,15 +39,22 @@ jobs:
           echo '--- filesystem ---'
           file work/system.raw.img
 
-          if file work/system.raw.img | grep -qi 'EROFS filesystem'; then
+          # Android system images without a journal are commonly reported by
+          # `file` as "ext2 filesystem data" even though they are ext4-format
+          # images with extents. Treat ext2/ext3/ext4 as an ext filesystem and
+          # let the kernel mount it as ext4.
+          FS_INFO="$(file -b work/system.raw.img)"
+          if grep -qiE 'EROFS filesystem' <<< "$FS_INFO"; then
             echo 'FS_TYPE=erofs' >> "$GITHUB_ENV"
-          elif file work/system.raw.img | grep -qi 'ext4 filesystem'; then
+          elif grep -qiE 'ext[234] filesystem' <<< "$FS_INFO"; then
             echo 'FS_TYPE=ext4' >> "$GITHUB_ENV"
           else
             echo 'Unsupported filesystem:'
-            file work/system.raw.img
+            printf '%s\n' "$FS_INFO"
             exit 2
           fi
+
+          echo "Detected FS_TYPE=$FS_TYPE"
 
       - name: Prepare filesystem for modification
         run: |
@@ -57,7 +64,7 @@ jobs:
 
           if [ "$FS_TYPE" = "ext4" ]; then
             sudo e2fsck -fy work/system.raw.img
-            sudo mount -o loop,rw work/system.raw.img work/mnt
+            sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt
             sudo cp -a work/mnt/. work/root/
             sudo umount work/mnt
           else
@@ -83,7 +90,7 @@ jobs:
           rm -f work/rebuilt.raw.img work/system.img
 
           if [ "$FS_TYPE" = "ext4" ]; then
-            sudo mount -o loop,rw work/system.raw.img work/mnt
+            sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt
             sudo cp -a work/root/. work/mnt/
             sync
             sudo umount work/mnt
