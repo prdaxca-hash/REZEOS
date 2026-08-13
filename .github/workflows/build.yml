@@ -20,25 +20,47 @@ jobs:
 
       - name: Download Axion GSI
         run: |
+          set -euo pipefail
           source config/reze.env
           mkdir -p work out
-          curl -L "$BASE_URL" -o work/base.img.xz
-          xz -d -c work/base.img.xz > work/system.img
+          curl -fL --retry 5 --retry-delay 3 -o work/base.img.xz "$BASE_URL"
+          xz -dc work/base.img.xz > work/base.img
+          file work/base.img
+
+      - name: Convert sparse image to raw ext4
+        run: |
+          set -euo pipefail
+          if file work/base.img | grep -qi 'Android sparse image'; then
+            simg2img work/base.img work/system.raw.img
+          else
+            cp work/base.img work/system.raw.img
+          fi
+          file work/system.raw.img
+          sudo e2fsck -fy work/system.raw.img
 
       - name: Apply RezeOS modifications
         run: |
+          set -euo pipefail
           sudo mkdir -p work/mnt
-          sudo mount -o loop,rw work/system.img work/mnt
-          SYSTEM_DIR=$PWD/work/mnt \
+          sudo mount -o loop,rw work/system.raw.img work/mnt
+          trap 'sudo umount work/mnt || true' EXIT
+
+          SYSTEM_DIR="$PWD/work/mnt" \
           REZEOS_NAME=RezeOS \
           REZEOS_VERSION=1.0-BETA \
           REZEOS_CODENAME=Reze \
           bash scripts/modify-system.sh
+
           sync
           sudo umount work/mnt
+          trap - EXIT
+          sudo e2fsck -fy work/system.raw.img
 
-      - name: Package output
+      - name: Repack Android sparse image
         run: |
+          set -euo pipefail
+          img2simg work/system.raw.img work/system.img
+          file work/system.img
           xz -T0 -9 -c work/system.img > out/RezeOS-GSI-arm64-ab.img.xz
           sha256sum out/RezeOS-GSI-arm64-ab.img.xz > out/SHA256SUMS
 
@@ -46,3 +68,4 @@ jobs:
         with:
           name: RezeOS-GSI
           path: out/
+          if-no-files-found: error
