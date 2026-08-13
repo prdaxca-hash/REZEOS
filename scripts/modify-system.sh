@@ -23,27 +23,26 @@ if [ -f "$PROP" ]; then
   } >> "$PROP"
 fi
 
-# Some Android GSI layouts expose /etc as a symlink. Resolve that link inside
-# the mounted image instead of asking mkdir to recreate the symlink itself.
-ETC_DIR="$SYSTEM_DIR/etc"
-if [ -L "$ETC_DIR" ]; then
-  ETC_LINK="$(readlink "$ETC_DIR")"
-  case "$ETC_LINK" in
-    /*) ETC_DIR="$SYSTEM_DIR$ETC_LINK" ;;
-    *)  ETC_DIR="$(dirname "$ETC_DIR")/$ETC_LINK" ;;
-  esac
+# Android GSI layouts may expose /etc as a symlink. Resolve it to the actual
+# directory inside the mounted image before creating RezeOS metadata.
+ETC_PATH="$SYSTEM_DIR/etc"
+if [ -L "$ETC_PATH" ]; then
+  echo "Android /etc symlink: $(readlink "$ETC_PATH")"
 fi
 
-if [ ! -d "$ETC_DIR" ]; then
-  mkdir -p "$ETC_DIR"
-fi
+ETC_DIR="$(realpath -e "$ETC_PATH")"
+echo "Resolved Android etc directory: $ETC_DIR"
 
 REZEOS_DIR="$ETC_DIR/rezeos"
 mkdir -p "$REZEOS_DIR"
+test -d "$REZEOS_DIR"
 
+echo "Writing RezeOS metadata: $REZEOS_DIR/build-info"
 cat > "$REZEOS_DIR/build-info" <<EOF
 NAME=${REZEOS_NAME}
 VERSION=${REZEOS_VERSION}
 CODENAME=${REZEOS_CODENAME}
 BASE=${REZEOS_BASE}
 EOF
+
+test -s "$REZEOS_DIR/build-info"
