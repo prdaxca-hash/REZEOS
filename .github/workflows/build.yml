@@ -113,7 +113,7 @@ jobs:
               exit 1
             fi
 
-            sudo cp -aHAX work/mnt/. work/root/
+            sudo cp -a work/mnt/. work/root/
             sudo umount work/mnt
           else
             echo 'Extracting EROFS image'
@@ -140,7 +140,7 @@ jobs:
           if [ "$FS_TYPE" = "ext4" ]; then
             echo 'Mounting original ext4 image for update'
             sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt
-            sudo cp -aHAX work/root/. work/mnt/
+            sudo cp -a work/root/. work/mnt/
             sync
             sudo umount work/mnt
             sudo e2fsck -fy work/system.raw.img
