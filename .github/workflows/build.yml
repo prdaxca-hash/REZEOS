@@ -150,11 +150,11 @@ jobs:
             PROP="$SYSTEM_DIR/system/build.prop"
           fi
           echo "Verified RezeOS properties in: $PROP"
-          test -s "$PROP"
-          grep -Fx 'ro.rezeos.name=RezeOS' "$PROP"
-          grep -Fx 'ro.rezeos.version=1.0-BETA' "$PROP"
-          grep -Fx 'ro.rezeos.codename=Reze' "$PROP"
-          grep -Fx 'ro.rezeos.base=LineageOS-23.2-20260524-VANILLA-EXT4-GSI' "$PROP"
+          sudo test -s "$PROP"
+          sudo grep -Fx 'ro.rezeos.name=RezeOS' "$PROP"
+          sudo grep -Fx 'ro.rezeos.version=1.0-BETA' "$PROP"
+          sudo grep -Fx 'ro.rezeos.codename=Reze' "$PROP"
+          sudo grep -Fx 'ro.rezeos.base=LineageOS-23.2-20260524-VANILLA-EXT4-GSI' "$PROP"
 
       - name: Rebuild modified system image
         run: |
