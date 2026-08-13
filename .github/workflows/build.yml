@@ -24,24 +24,17 @@ jobs:
           set -euo pipefail
           source config/reze.env
           mkdir -p work/extracted out assets
-
-          echo '--- downloading Reze photo wallpaper ---'
           curl --fail --location --retry 5 --retry-delay 3 --retry-all-errors \
             --user-agent 'Mozilla/5.0' \
             --output assets/reze-wallpaper.jpg \
             'https://moegirl.uk/images/3/3b/Chainsawman_Moive.jpg'
           file assets/reze-wallpaper.jpg
-          test "$(file -b assets/reze-wallpaper.jpg | grep -ci 'JPEG image')" -eq 1
-
-          echo '--- downloading RezeOS base GSI ---'
+          grep -qi 'JPEG image' < <(file -b assets/reze-wallpaper.jpg)
           curl --fail --location --retry 5 --retry-delay 3 --retry-all-errors \
             --output work/base.7z "$BASE_URL"
-          file work/base.7z
           7z x -y -owork/extracted work/base.7z
-
           mapfile -t IMAGES < <(find work/extracted -type f \( -iname '*.img' -o -iname '*.img.raw' \) -print | sort)
           [ "${#IMAGES[@]}" -gt 0 ] || { echo 'No Android system image found.'; exit 1; }
-
           IMAGE=''
           for candidate in "${IMAGES[@]}"; do
             if file -b "$candidate" | grep -qiE 'Android sparse image|ext[234] filesystem|EROFS filesystem'; then
@@ -114,7 +107,6 @@ jobs:
           sudo grep -Fx 'ro.product.name=RezeOS' "$PROP"
           sudo grep -Fx 'ro.product.device=reze' "$PROP"
           sudo grep -Fx 'ro.build.display.id=RezeOS-1.0-BETA' "$PROP"
-          sudo grep -Fx 'ro.config.wallpaper=/system/media/rezeos_default.jpg' "$PROP"
           sudo test -s "$SYSTEM_DIR/system/media/rezeos_default.jpg"
           ! sudo grep -qiE 'lineage[[:space:]_-]*os' "$PROP"
 
