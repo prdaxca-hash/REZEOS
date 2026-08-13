@@ -2,6 +2,8 @@ name: Build RezeOS from LineageOS GSI
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
 
@@ -31,12 +33,9 @@ jobs:
             xz-utils
 
       - name: Download and extract LineageOS GSI
-        env:
-          BASE_URL: ${{ vars.REZEOS_BASE_URL }}
         run: |
           set -euo pipefail
           source config/reze.env
-          : "${BASE_URL:=$BASE_URL}"
 
           rm -rf work out
           mkdir -p work/extracted out
