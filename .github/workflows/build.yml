@@ -43,7 +43,6 @@ jobs:
           if grep -qiE 'EROFS filesystem' <<< "$FS_INFO"; then
             DETECTED_FS=erofs
           elif grep -qiE 'ext[234] filesystem' <<< "$FS_INFO"; then
-            # Android ext4 images without a journal are reported as ext2 by file.
             DETECTED_FS=ext4
           else
             echo 'Unsupported filesystem:'
@@ -61,7 +60,17 @@ jobs:
           mkdir -p work/root work/mnt
 
           if [ "$FS_TYPE" = "ext4" ]; then
-            sudo e2fsck -fy work/system.raw.img
+            echo 'Inspecting ext4 features'
+            sudo dumpe2fs -h work/system.raw.img 2>/dev/null | grep -E 'Filesystem features|Block size|Block count' || true
+
+            # Android system images can carry the ext4 shared_blocks feature,
+            # which is intentionally read-only and causes rw mounts to fail.
+            # Unshare the blocks before attempting a writable mount.
+            sudo e2fsck -fy -E unshare_blocks work/system.raw.img
+
+            # Recheck the image after unsharing blocks.
+            sudo dumpe2fs -h work/system.raw.img 2>/dev/null | grep 'Filesystem features' || true
+
             sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt
             sudo cp -a work/mnt/. work/root/
             sudo umount work/mnt
