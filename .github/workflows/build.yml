@@ -148,8 +148,7 @@ jobs:
             REZEOS_BASE=LineageOS-23.2-20260524-VANILLA-EXT4-GSI \
             bash scripts/modify-system.sh
 
-          ETC_DIR="$(sudo realpath -e "$SYSTEM_DIR/etc")"
-          BUILD_INFO="$ETC_DIR/rezeos/build-info"
+          BUILD_INFO="$SYSTEM_DIR/etc/rezeos/build-info"
           echo "Verified RezeOS metadata path: $BUILD_INFO"
           test -s "$BUILD_INFO"
           grep -Fx 'NAME=RezeOS' "$BUILD_INFO"
