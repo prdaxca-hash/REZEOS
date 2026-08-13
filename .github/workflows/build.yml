@@ -148,11 +148,14 @@ jobs:
             REZEOS_BASE=LineageOS-23.2-20260524-VANILLA-EXT4-GSI \
             bash scripts/modify-system.sh
 
-          test -f "$SYSTEM_DIR/etc/rezeos/build-info"
-          grep -Fx 'NAME=RezeOS' "$SYSTEM_DIR/etc/rezeos/build-info"
-          grep -Fx 'VERSION=1.0-BETA' "$SYSTEM_DIR/etc/rezeos/build-info"
-          grep -Fx 'CODENAME=Reze' "$SYSTEM_DIR/etc/rezeos/build-info"
-          grep -Fx 'BASE=LineageOS-23.2-20260524-VANILLA-EXT4-GSI' "$SYSTEM_DIR/etc/rezeos/build-info"
+          ETC_DIR="$(sudo realpath -e "$SYSTEM_DIR/etc")"
+          BUILD_INFO="$ETC_DIR/rezeos/build-info"
+          echo "Verified RezeOS metadata path: $BUILD_INFO"
+          test -s "$BUILD_INFO"
+          grep -Fx 'NAME=RezeOS' "$BUILD_INFO"
+          grep -Fx 'VERSION=1.0-BETA' "$BUILD_INFO"
+          grep -Fx 'CODENAME=Reze' "$BUILD_INFO"
+          grep -Fx 'BASE=LineageOS-23.2-20260524-VANILLA-EXT4-GSI' "$BUILD_INFO"
 
       - name: Rebuild modified system image
         run: |
