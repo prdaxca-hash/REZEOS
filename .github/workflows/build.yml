@@ -17,12 +17,11 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y curl xz-utils e2fsprogs erofs-utils file android-sdk-libsparse-utils 7zip
+          sudo apt-get install -y curl xz-utils e2fsprogs erofs-utils file android-sdk-libsparse-utils
 
-      - name: Download base GSI and Reze photo
+      - name: Download RestlessOS base GSI and Reze photo
         run: |
           set -euo pipefail
-          source config/reze.env
           mkdir -p work/extracted out assets
           curl --fail --location --retry 5 --retry-delay 3 --retry-all-errors \
             --user-agent 'Mozilla/5.0' \
@@ -30,20 +29,13 @@ jobs:
             'https://moegirl.uk/images/3/3b/Chainsawman_Moive.jpg'
           file assets/reze-wallpaper.jpg
           grep -qi 'JPEG image' < <(file -b assets/reze-wallpaper.jpg)
+
           curl --fail --location --retry 5 --retry-delay 3 --retry-all-errors \
-            --output work/base.7z "$BASE_URL"
-          7z x -y -owork/extracted work/base.7z
-          mapfile -t IMAGES < <(find work/extracted -type f \( -iname '*.img' -o -iname '*.img.raw' \) -print | sort)
-          [ "${#IMAGES[@]}" -gt 0 ] || { echo 'No Android system image found.'; exit 1; }
-          IMAGE=''
-          for candidate in "${IMAGES[@]}"; do
-            if file -b "$candidate" | grep -qiE 'Android sparse image|ext[234] filesystem|EROFS filesystem'; then
-              IMAGE="$candidate"
-              break
-            fi
-          done
-          [ -n "$IMAGE" ] || { echo 'No supported Android filesystem image found.'; exit 1; }
-          cp -- "$IMAGE" work/base.img
+            --output work/base.img.xz \
+            'https://github.com/cawilliamson/treble_restlessos/releases/download/16.0.0-202606230923/RestlessOS-arm64-ab-16.0.0-202606230923.img.xz'
+          file work/base.img.xz
+          xz -d -c work/base.img.xz > work/base.img
+          file work/base.img
 
       - name: Prepare raw system image
         run: |
@@ -90,25 +82,9 @@ jobs:
             REZEOS_NAME=RezeOS \
             REZEOS_VERSION=1.0-BETA \
             REZEOS_CODENAME=Reze \
-            REZEOS_BASE=RezeOS-23.2-20260524-VANILLA-EXT4-GSI \
+            REZEOS_BASE=RestlessOS-16.0.0-202606230923 \
             WALLPAPER_ASSET="$PWD/assets/reze-wallpaper.jpg" \
             bash scripts/modify-system.sh
-
-          PROP="$SYSTEM_DIR/build.prop"
-          [ -f "$PROP" ] || PROP="$SYSTEM_DIR/system/build.prop"
-          sudo test -s "$PROP"
-          sudo grep -Fx 'ro.rezeos.name=RezeOS' "$PROP"
-          sudo grep -Fx 'ro.rezeos.version=1.0-BETA' "$PROP"
-          sudo grep -Fx 'ro.rezeos.codename=Reze' "$PROP"
-          sudo grep -Fx 'ro.rezeos.base=RezeOS-23.2-20260524-VANILLA-EXT4-GSI' "$PROP"
-          sudo grep -Fx 'ro.product.brand=RezeOS' "$PROP"
-          sudo grep -Fx 'ro.product.manufacturer=RezeOS' "$PROP"
-          sudo grep -Fx 'ro.product.model=RezeOS' "$PROP"
-          sudo grep -Fx 'ro.product.name=RezeOS' "$PROP"
-          sudo grep -Fx 'ro.product.device=reze' "$PROP"
-          sudo grep -Fx 'ro.build.display.id=RezeOS-1.0-BETA' "$PROP"
-          sudo test -s "$SYSTEM_DIR/system/media/rezeos_default.jpg"
-          ! sudo grep -qiE 'lineage[[:space:]_-]*os' "$PROP"
 
       - name: Rebuild modified system image
         run: |
