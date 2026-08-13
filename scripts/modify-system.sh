@@ -6,17 +6,26 @@ set -euo pipefail
 : "${REZEOS_VERSION:?REZEOS_VERSION required}"
 : "${REZEOS_CODENAME:?REZEOS_CODENAME required}"
 
-PROP="$SYSTEM_DIR/system/build.prop"
+# A mounted GSI system image exposes the Android system root directly.
+# Depending on the build layout, build.prop may be at the root of the image.
+PROP="$SYSTEM_DIR/build.prop"
+if [ ! -f "$PROP" ]; then
+  PROP="$SYSTEM_DIR/system/build.prop"
+fi
+
 if [ -f "$PROP" ]; then
-  sed -i '/^ro.rezeos./d' "$PROP" || true
-  echo "ro.rezeos.name=${REZEOS_NAME}" >> "$PROP"
-  echo "ro.rezeos.version=${REZEOS_VERSION}" >> "$PROP"
-  echo "ro.rezeos.codename=${REZEOS_CODENAME}" >> "$PROP"
+  sed -i '/^ro\.rezeos\./d' "$PROP" || true
+  {
+    echo "ro.rezeos.name=${REZEOS_NAME}"
+    echo "ro.rezeos.version=${REZEOS_VERSION}"
+    echo "ro.rezeos.codename=${REZEOS_CODENAME}"
+  } >> "$PROP"
 fi
 
 mkdir -p "$SYSTEM_DIR/etc/rezeos"
 cat > "$SYSTEM_DIR/etc/rezeos/build-info" <<EOF
 NAME=${REZEOS_NAME}
 VERSION=${REZEOS_VERSION}
-BASE=AxionOS-2.8-GSI
+CODENAME=${REZEOS_CODENAME}
+BASE=AxionOS-2.8-GSI-20260802
 EOF
