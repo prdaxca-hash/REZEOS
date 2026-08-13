@@ -1,9 +1,12 @@
-name: Build RezeOS GSI
+name: Build RezeOS from LineageOS GSI
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -11,142 +14,201 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Install tools
+      - name: Install build tools
         run: |
-          sudo apt update
-          sudo apt install -y curl xz-utils e2fsprogs erofs-utils file android-sdk-libsparse-utils 7zip
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            7zip \
+            android-sdk-libsparse-utils \
+            curl \
+            e2fsprogs \
+            erofs-utils \
+            file \
+            xz-utils
 
-      - name: Download LineageOS GSI
+      - name: Download and extract LineageOS GSI
+        env:
+          BASE_URL: ${{ vars.REZEOS_BASE_URL }}
         run: |
           set -euo pipefail
           source config/reze.env
-          mkdir -p work/archive work/extracted out
+          : "${BASE_URL:=$BASE_URL}"
+
+          rm -rf work out
+          mkdir -p work/extracted out
 
           echo '--- downloading LineageOS GSI archive ---'
-          curl -fL --retry 5 --retry-delay 3 -o work/base.7z "$BASE_URL"
+          curl --fail --location --retry 5 --retry-delay 3 --retry-all-errors \
+            --output work/base.7z "$BASE_URL"
+
+          echo '--- archive type ---'
           file work/base.7z
 
           echo '--- archive contents ---'
-          7z l work/base.7z | tail -30
+          7z l work/base.7z | tail -40
 
           echo '--- extracting archive ---'
-          7z x -y -owork/extracted work/base.7z
+          7z x -y -owork/extracted work/base.7z >/tmp/rezeos-7z.log
+          cat /tmp/rezeos-7z.log
 
-          echo '--- extracted files ---'
-          find work/extracted -type f -maxdepth 5 -printf '%p (%s bytes)\n' | head -100
+          echo '--- locating Android image ---'
+          mapfile -t IMAGES < <(find work/extracted -type f \
+            \( -iname '*.img' -o -iname '*.img.raw' \) \
+            -printf '%p\n' | sort)
 
-          IMAGE="$(find work/extracted -type f \( -iname '*.img' -o -iname '*.img.raw' \) -print -quit)"
+          if [ "${#IMAGES[@]}" -eq 0 ]; then
+            echo 'No Android system image found in LineageOS archive.'
+            find work/extracted -maxdepth 4 -type f -print | sort | head -200
+            exit 1
+          fi
+
+          printf 'Candidate images:\n%s\n' "${IMAGES[*]}"
+
+          IMAGE=''
+          for candidate in "${IMAGES[@]}"; do
+            if file -b "$candidate" | grep -qiE 'Android sparse image|ext[234] filesystem|EROFS filesystem'; then
+              IMAGE="$candidate"
+              break
+            fi
+          done
+
           if [ -z "$IMAGE" ]; then
-            echo 'No Android image found in LineageOS archive.'
+            echo 'No supported Android filesystem image found.'
+            for candidate in "${IMAGES[@]}"; do
+              printf '%s: %s\n' "$candidate" "$(file -b "$candidate")"
+            done
             exit 1
           fi
 
           echo "Using image: $IMAGE"
-          cp "$IMAGE" work/base.img
+          cp -- "$IMAGE" work/base.img
           file work/base.img
 
-      - name: Convert sparse image and detect filesystem
+      - name: Prepare raw system image
         run: |
           set -euo pipefail
-          if file work/base.img | grep -qi 'Android sparse image'; then
+
+          rm -f work/system.raw.img
+          if file -b work/base.img | grep -qi 'Android sparse image'; then
+            echo 'Converting Android sparse image to raw image'
             simg2img work/base.img work/system.raw.img
           else
-            cp work/base.img work/system.raw.img
+            cp -- work/base.img work/system.raw.img
           fi
 
-          echo '--- filesystem ---'
-          file work/system.raw.img
           FS_INFO="$(file -b work/system.raw.img)"
+          echo "Filesystem: $FS_INFO"
 
-          if grep -qiE 'EROFS filesystem' <<< "$FS_INFO"; then
-            DETECTED_FS=erofs
-          elif grep -qiE 'ext[234] filesystem' <<< "$FS_INFO"; then
-            DETECTED_FS=ext4
-          else
-            echo 'Unsupported filesystem:'
-            printf '%s\n' "$FS_INFO"
-            exit 2
-          fi
+          case "$FS_INFO" in
+            *'EROFS filesystem'*) FS_TYPE=erofs ;;
+            *'ext2 filesystem'*|*'ext3 filesystem'*|*'ext4 filesystem'*) FS_TYPE=ext4 ;;
+            *)
+              echo 'Unsupported filesystem:'
+              printf '%s\n' "$FS_INFO"
+              exit 2
+              ;;
+          esac
 
-          echo "Detected filesystem: $DETECTED_FS"
-          echo "FS_TYPE=$DETECTED_FS" >> "$GITHUB_ENV"
+          echo "Detected filesystem: $FS_TYPE"
+          echo "FS_TYPE=$FS_TYPE" >> "$GITHUB_ENV"
 
-      - name: Prepare filesystem for modification
+      - name: Validate copy tool before touching the image
+        run: |
+          set -euo pipefail
+          cp --version | head -1
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          mkdir -p "$tmpdir/src/dir" "$tmpdir/dst"
+          printf 'copy smoke test\n' > "$tmpdir/src/dir/file"
+          cp -a -- "$tmpdir/src/." "$tmpdir/dst/"
+          test -f "$tmpdir/dst/dir/file"
+          echo 'cp -a smoke test passed'
+
+      - name: Prepare filesystem tree
         run: |
           set -euo pipefail
           rm -rf work/root work/mnt
           mkdir -p work/root work/mnt
 
-          if [ "$FS_TYPE" = "ext4" ]; then
+          if [ "$FS_TYPE" = 'ext4' ]; then
             echo '--- ext4 feature inspection ---'
-            sudo dumpe2fs -h work/system.raw.img 2>/dev/null | grep -E 'Filesystem features|Block size|Block count' || true
+            sudo dumpe2fs -h work/system.raw.img 2>/dev/null \
+              | grep -E 'Filesystem features|Block size|Block count' || true
 
-            FS_FEATURES="$(sudo dumpe2fs -h work/system.raw.img 2>/dev/null | sed -n 's/^Filesystem features:[[:space:]]*//p')"
-            echo "Filesystem features: $FS_FEATURES"
+            FS_FEATURES="$(sudo dumpe2fs -h work/system.raw.img 2>/dev/null \
+              | sed -n 's/^Filesystem features:[[:space:]]*//p')"
 
             if grep -qw 'shared_blocks' <<< "$FS_FEATURES"; then
-              echo 'shared_blocks detected; unsharing ext4 blocks'
+              echo 'shared_blocks detected; unsharing blocks'
               sudo e2fsck -fy -E unshare_blocks work/system.raw.img
             else
               sudo e2fsck -fy work/system.raw.img
             fi
 
-            echo '--- ext4 features after fsck ---'
-            sudo dumpe2fs -h work/system.raw.img 2>/dev/null | grep -E 'Filesystem features|Block size|Block count' || true
-
             echo '--- test read-only mount ---'
-            if ! sudo mount -t ext4 -o loop,ro work/system.raw.img work/mnt; then
-              echo 'Read-only mount failed; kernel diagnostics:'
-              dmesg | tail -100 || true
-              sudo dumpe2fs -h work/system.raw.img 2>/dev/null || true
-              exit 1
-            fi
+            sudo mount -t ext4 -o loop,ro work/system.raw.img work/mnt
             sudo umount work/mnt
 
             echo '--- mount read-write ---'
-            if ! sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt; then
-              echo 'Read-write mount failed; kernel diagnostics:'
-              dmesg | tail -100 || true
-              sudo dumpe2fs -h work/system.raw.img 2>/dev/null || true
-              exit 1
-            fi
+            sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt
 
-            sudo cp -aHAX work/mnt/. work/root/
+            echo '--- copy mounted filesystem to working tree ---'
+            sudo cp -a -- work/mnt/. work/root/
             sudo umount work/mnt
           else
-            echo 'Extracting EROFS image'
+            echo '--- extract EROFS filesystem ---'
             sudo fsck.erofs --extract=work/root work/system.raw.img
           fi
 
-          find work/root -maxdepth 2 -type d | head -50
+          test -d work/root/etc
+          echo 'Working system tree prepared.'
 
-      - name: Apply RezeOS modifications
+      - name: Modify RezeOS system tree
+        env:
+          SYSTEM_DIR: ${{ github.workspace }}/work/root
+          REZEOS_NAME: RezeOS
+          REZEOS_VERSION: 1.0-BETA
+          REZEOS_CODENAME: Reze
+          REZEOS_BASE: LineageOS-23.2-20260524-VANILLA-EXT4-GSI
         run: |
           set -euo pipefail
           sudo env \
-            SYSTEM_DIR="$PWD/work/root" \
-            REZEOS_NAME=RezeOS \
-            REZEOS_VERSION=1.0-BETA \
-            REZEOS_CODENAME=Reze \
+            SYSTEM_DIR="$SYSTEM_DIR" \
+            REZEOS_NAME="$REZEOS_NAME" \
+            REZEOS_VERSION="$REZEOS_VERSION" \
+            REZEOS_CODENAME="$REZEOS_CODENAME" \
+            REZEOS_BASE="$REZEOS_BASE" \
             bash scripts/modify-system.sh
 
-      - name: Rebuild system image
+          test -f work/root/etc/rezeos/build-info
+          grep -Fx 'NAME=RezeOS' work/root/etc/rezeos/build-info
+          grep -Fx 'VERSION=1.0-BETA' work/root/etc/rezeos/build-info
+          grep -Fx 'CODENAME=Reze' work/root/etc/rezeos/build-info
+          grep -Fx "BASE=$REZEOS_BASE" work/root/etc/rezeos/build-info
+
+      - name: Rebuild modified system image
         run: |
           set -euo pipefail
           rm -f work/rebuilt.raw.img work/system.img
 
-          if [ "$FS_TYPE" = "ext4" ]; then
-            echo 'Mounting original ext4 image for update'
+          if [ "$FS_TYPE" = 'ext4' ]; then
+            echo '--- remounting ext4 read-write ---'
             sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt
-            sudo cp -aHAX work/root/. work/mnt/
+
+            echo '--- copying modified tree back to ext4 image ---'
+            sudo cp -a -- work/root/. work/mnt/
             sync
             sudo umount work/mnt
+
+            echo '--- final ext4 filesystem check ---'
             sudo e2fsck -fy work/system.raw.img
             mv work/system.raw.img work/rebuilt.raw.img
           else
-            echo 'Rebuilding EROFS image'
+            echo '--- rebuilding EROFS image ---'
             mkfs.erofs -zlz4hc work/rebuilt.raw.img work/root
           fi
 
@@ -161,7 +223,8 @@ jobs:
           xz -T0 -9 -c work/system.img > out/RezeOS-GSI-arm64-ab.img.xz
           sha256sum out/RezeOS-GSI-arm64-ab.img.xz > out/SHA256SUMS
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload RezeOS artifact
+        uses: actions/upload-artifact@v4
         with:
           name: RezeOS-GSI
           path: out/
