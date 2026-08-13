@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4
@@ -60,36 +60,57 @@ jobs:
           mkdir -p work/root work/mnt
 
           if [ "$FS_TYPE" = "ext4" ]; then
-            echo 'Inspecting ext4 features'
+            echo '--- ext4 feature inspection ---'
             sudo dumpe2fs -h work/system.raw.img 2>/dev/null | grep -E 'Filesystem features|Block size|Block count' || true
 
-            # Android system images can carry the ext4 shared_blocks feature,
-            # which is intentionally read-only and causes rw mounts to fail.
-            # Unshare the blocks before attempting a writable mount.
-            sudo e2fsck -fy -E unshare_blocks work/system.raw.img
+            FS_FEATURES="$(sudo dumpe2fs -h work/system.raw.img 2>/dev/null | sed -n 's/^Filesystem features:[[:space:]]*//p')"
+            echo "Filesystem features: $FS_FEATURES"
 
-            # Recheck the image after unsharing blocks.
-            sudo dumpe2fs -h work/system.raw.img 2>/dev/null | grep 'Filesystem features' || true
+            if grep -qw 'shared_blocks' <<< "$FS_FEATURES"; then
+              echo 'shared_blocks detected; unsharing ext4 blocks'
+              sudo e2fsck -fy -E unshare_blocks work/system.raw.img
+            else
+              sudo e2fsck -fy work/system.raw.img
+            fi
 
-            sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt
-            sudo cp -a work/mnt/. work/root/
+            echo '--- ext4 features after fsck ---'
+            sudo dumpe2fs -h work/system.raw.img 2>/dev/null | grep -E 'Filesystem features|Block size|Block count' || true
+
+            echo '--- test read-only mount ---'
+            if ! sudo mount -t ext4 -o loop,ro work/system.raw.img work/mnt; then
+              echo 'Read-only mount failed; kernel diagnostics:'
+              dmesg | tail -100 || true
+              sudo dumpe2fs -h work/system.raw.img 2>/dev/null || true
+              exit 1
+            fi
+            sudo umount work/mnt
+
+            echo '--- mount read-write ---'
+            if ! sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt; then
+              echo 'Read-write mount failed; kernel diagnostics:'
+              dmesg | tail -100 || true
+              sudo dumpe2fs -h work/system.raw.img 2>/dev/null || true
+              exit 1
+            fi
+
+            sudo cp -aHAX work/mnt/. work/root/
             sudo umount work/mnt
           else
             echo 'Extracting EROFS image'
             sudo fsck.erofs --extract=work/root work/system.raw.img
           fi
 
-          sudo chown -R "$USER:$USER" work/root
           find work/root -maxdepth 2 -type d | head -50
 
       - name: Apply RezeOS modifications
         run: |
           set -euo pipefail
-          SYSTEM_DIR="$PWD/work/root" \
-          REZEOS_NAME=RezeOS \
-          REZEOS_VERSION=1.0-BETA \
-          REZEOS_CODENAME=Reze \
-          bash scripts/modify-system.sh
+          sudo env \
+            SYSTEM_DIR="$PWD/work/root" \
+            REZEOS_NAME=RezeOS \
+            REZEOS_VERSION=1.0-BETA \
+            REZEOS_CODENAME=Reze \
+            bash scripts/modify-system.sh
 
       - name: Rebuild system image
         run: |
@@ -97,8 +118,9 @@ jobs:
           rm -f work/rebuilt.raw.img work/system.img
 
           if [ "$FS_TYPE" = "ext4" ]; then
+            echo 'Mounting original ext4 image for update'
             sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt
-            sudo cp -a work/root/. work/mnt/
+            sudo cp -aHAX work/root/. work/mnt/
             sync
             sudo umount work/mnt
             sudo e2fsck -fy work/system.raw.img
