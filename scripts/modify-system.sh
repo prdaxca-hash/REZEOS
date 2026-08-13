@@ -14,56 +14,23 @@ if [ ! -f "$PROP" ]; then
   PROP="$SYSTEM_DIR/system/build.prop"
 fi
 
-if [ -f "$PROP" ]; then
-  sed -i '/^ro\.rezeos\./d' "$PROP" || true
-  {
-    echo "ro.rezeos.name=${REZEOS_NAME}"
-    echo "ro.rezeos.version=${REZEOS_VERSION}"
-    echo "ro.rezeos.codename=${REZEOS_CODENAME}"
-  } >> "$PROP"
-fi
-
-# The GSI uses a system-as-root style /etc -> /system/etc symlink. When the
-# system partition is mounted by itself at $SYSTEM_DIR, /system/etc is outside
-# the host namespace and realpath cannot resolve it. In the Android runtime,
-# /system/etc refers to the etc directory supplied by this same system image.
-# Replace this special dangling symlink with a real directory so the resulting
-# image preserves the intended runtime path while remaining directly editable.
-ETC_PATH="$SYSTEM_DIR/etc"
-if [ -L "$ETC_PATH" ]; then
-  ETC_LINK="$(readlink "$ETC_PATH")"
-  echo "Android /etc symlink: $ETC_LINK"
-
-  if [ "$ETC_LINK" = "/system/etc" ] && [ ! -e "$ETC_PATH" ]; then
-    echo 'Converting dangling /etc -> /system/etc symlink to a real etc directory'
-    rm -f "$ETC_PATH"
-    mkdir -p "$ETC_PATH"
-  fi
-fi
-
-if [ -L "$ETC_PATH" ]; then
-  ETC_DIR="$(realpath -e "$ETC_PATH")"
-else
-  ETC_DIR="$ETC_PATH"
-fi
-
-if [ ! -d "$ETC_DIR" ]; then
-  echo "Unable to locate Android etc directory: $ETC_DIR" >&2
+if [ ! -f "$PROP" ]; then
+  echo "Unable to locate build.prop in $SYSTEM_DIR" >&2
   exit 1
 fi
 
-echo "Resolved Android etc directory: $ETC_DIR"
+# Keep the modification minimal: only add RezeOS properties to build.prop.
+# Do not rewrite /etc or any Android runtime symlinks. In a GSI, /etc may be a
+# deliberately dangling /system/etc symlink while the system partition is
+# mounted at /system during Android boot. Replacing it with a directory breaks
+# the original runtime layout and can cause a boot hang.
+sed -i '/^ro\.rezeos\./d' "$PROP"
+{
+  echo "ro.rezeos.name=${REZEOS_NAME}"
+  echo "ro.rezeos.version=${REZEOS_VERSION}"
+  echo "ro.rezeos.codename=${REZEOS_CODENAME}"
+  echo "ro.rezeos.base=${REZEOS_BASE}"
+} >> "$PROP"
 
-REZEOS_DIR="$ETC_DIR/rezeos"
-mkdir -p "$REZEOS_DIR"
-test -d "$REZEOS_DIR"
-
-echo "Writing RezeOS metadata: $REZEOS_DIR/build-info"
-cat > "$REZEOS_DIR/build-info" <<EOF
-NAME=${REZEOS_NAME}
-VERSION=${REZEOS_VERSION}
-CODENAME=${REZEOS_CODENAME}
-BASE=${REZEOS_BASE}
-EOF
-
-test -s "$REZEOS_DIR/build-info"
+echo "Modified RezeOS properties in: $PROP"
+grep -E '^ro\.rezeos\.' "$PROP"
