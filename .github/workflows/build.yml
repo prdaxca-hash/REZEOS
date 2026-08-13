@@ -38,23 +38,21 @@ jobs:
 
           echo '--- filesystem ---'
           file work/system.raw.img
-
-          # Android system images without a journal are commonly reported by
-          # `file` as "ext2 filesystem data" even though they are ext4-format
-          # images with extents. Treat ext2/ext3/ext4 as an ext filesystem and
-          # let the kernel mount it as ext4.
           FS_INFO="$(file -b work/system.raw.img)"
+
           if grep -qiE 'EROFS filesystem' <<< "$FS_INFO"; then
-            echo 'FS_TYPE=erofs' >> "$GITHUB_ENV"
+            DETECTED_FS=erofs
           elif grep -qiE 'ext[234] filesystem' <<< "$FS_INFO"; then
-            echo 'FS_TYPE=ext4' >> "$GITHUB_ENV"
+            # Android ext4 images without a journal are reported as ext2 by file.
+            DETECTED_FS=ext4
           else
             echo 'Unsupported filesystem:'
             printf '%s\n' "$FS_INFO"
             exit 2
           fi
 
-          echo "Detected FS_TYPE=$FS_TYPE"
+          echo "Detected filesystem: $DETECTED_FS"
+          echo "FS_TYPE=$DETECTED_FS" >> "$GITHUB_ENV"
 
       - name: Prepare filesystem for modification
         run: |
