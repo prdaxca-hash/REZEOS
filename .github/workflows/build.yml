@@ -19,169 +19,111 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl xz-utils e2fsprogs erofs-utils file android-sdk-libsparse-utils 7zip
 
-      - name: Download LineageOS GSI
+      - name: Download RezeOS base GSI
         run: |
           set -euo pipefail
           source config/reze.env
-          mkdir -p work/extracted out
+          mkdir -p work/extracted out assets
+          # Decode the supplied Reze wallpaper into the build workspace.
+          WALLPAPER_B64='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'
+          printf '%s' "$WALLPAPER_B64" | base64 -d > assets/reze-wallpaper.webp
+          file assets/reze-wallpaper.webp
 
-          echo '--- downloading LineageOS GSI archive ---'
+          echo '--- downloading RezeOS base GSI ---'
           curl --fail --location --retry 5 --retry-delay 3 --retry-all-errors \
             --output work/base.7z "$BASE_URL"
           file work/base.7z
-
-          echo '--- archive contents ---'
-          7z l work/base.7z | tail -40
-
-          echo '--- extracting archive ---'
           7z x -y -owork/extracted work/base.7z
 
-          echo '--- locating Android image ---'
-          mapfile -t IMAGES < <(find work/extracted -type f \
-            \( -iname '*.img' -o -iname '*.img.raw' \) \
-            -printf '%p\n' | sort)
-
-          if [ "${#IMAGES[@]}" -eq 0 ]; then
-            echo 'No Android system image found in LineageOS archive.'
-            find work/extracted -maxdepth 4 -type f -print | sort | head -200
-            exit 1
-          fi
+          mapfile -t IMAGES < <(find work/extracted -type f \( -iname '*.img' -o -iname '*.img.raw' \) -printf '%p\n' | sort)
+          [ "${#IMAGES[@]}" -gt 0 ] || { echo 'No Android system image found.'; exit 1; }
 
           IMAGE=''
           for candidate in "${IMAGES[@]}"; do
-            if file -b "$candidate" | grep -qiE 'Android sparse image|ext[234] filesystem|EROFS filesystem'; then
-              IMAGE="$candidate"
-              break
-            fi
+            if file -b "$candidate" | grep -qiE 'Android sparse image|ext[234] filesystem|EROFS filesystem'; then IMAGE="$candidate"; break; fi
           done
-
-          if [ -z "$IMAGE" ]; then
-            echo 'No supported Android filesystem image found.'
-            for candidate in "${IMAGES[@]}"; do
-              printf '%s: %s\n' "$candidate" "$(file -b "$candidate")"
-            done
-            exit 1
-          fi
-
-          echo "Using image: $IMAGE"
+          [ -n "$IMAGE" ] || { echo 'No supported Android filesystem image found.'; exit 1; }
           cp -- "$IMAGE" work/base.img
-          file work/base.img
 
       - name: Prepare raw system image
         run: |
           set -euo pipefail
-          rm -f work/system.raw.img
-
           if file -b work/base.img | grep -qi 'Android sparse image'; then
-            echo 'Converting Android sparse image to raw image'
             simg2img work/base.img work/system.raw.img
           else
             cp -- work/base.img work/system.raw.img
           fi
-
           FS_INFO="$(file -b work/system.raw.img)"
-          echo "Filesystem: $FS_INFO"
-
           case "$FS_INFO" in
             *'EROFS filesystem'*) FS_TYPE=erofs ;;
             *'ext2 filesystem'*|*'ext3 filesystem'*|*'ext4 filesystem'*) FS_TYPE=ext4 ;;
-            *)
-              echo 'Unsupported filesystem:'
-              printf '%s\n' "$FS_INFO"
-              exit 2
-              ;;
+            *) echo "Unsupported filesystem: $FS_INFO"; exit 2 ;;
           esac
-
-          echo "Detected filesystem: $FS_TYPE"
           echo "FS_TYPE=$FS_TYPE" >> "$GITHUB_ENV"
 
-      - name: Prepare filesystem for modification
+      - name: Prepare filesystem for RezeOS modification
         run: |
           set -euo pipefail
           rm -rf work/root work/mnt
           mkdir -p work/root work/mnt
-
-          if [ "$FS_TYPE" = 'ext4' ]; then
-            echo '--- ext4 feature inspection ---'
-            sudo dumpe2fs -h work/system.raw.img 2>/dev/null \
-              | grep -E 'Filesystem features|Block size|Block count' || true
-
-            FS_FEATURES="$(sudo dumpe2fs -h work/system.raw.img 2>/dev/null \
-              | sed -n 's/^Filesystem features:[[:space:]]*//p')"
+          if [ "$FS_TYPE" = ext4 ]; then
+            FS_FEATURES="$(sudo dumpe2fs -h work/system.raw.img 2>/dev/null | sed -n 's/^Filesystem features:[[:space:]]*//p')"
             echo "Filesystem features: $FS_FEATURES"
-
-            if grep -qw 'shared_blocks' <<< "$FS_FEATURES"; then
-              echo 'shared_blocks detected; unsharing ext4 blocks'
+            if grep -qw shared_blocks <<< "$FS_FEATURES"; then
               sudo e2fsck -fy -E unshare_blocks work/system.raw.img
             else
               sudo e2fsck -fy work/system.raw.img
             fi
-
-            echo '--- test read-only mount ---'
             sudo mount -t ext4 -o loop,ro work/system.raw.img work/mnt
             sudo umount work/mnt
-
-            echo '--- mount read-write ---'
             sudo mount -t ext4 -o loop,rw work/system.raw.img work/mnt
             sudo mountpoint -q work/mnt
-
             echo "SYSTEM_DIR=$PWD/work/mnt" >> "$GITHUB_ENV"
-            echo 'Mounted ext4 filesystem is ready for direct modification.'
+            echo 'Mounted ext4 filesystem is ready for direct RezeOS modification.'
           else
-            echo '--- extract EROFS filesystem ---'
             sudo fsck.erofs --extract=work/root work/system.raw.img
-            test -d work/root
             echo "SYSTEM_DIR=$PWD/work/root" >> "$GITHUB_ENV"
           fi
 
-      - name: Modify RezeOS system
+      - name: Modify RezeOS system and default wallpaper
         run: |
           set -euo pipefail
-          sudo env \
-            SYSTEM_DIR="$SYSTEM_DIR" \
-            REZEOS_NAME=RezeOS \
-            REZEOS_VERSION=1.0-BETA \
-            REZEOS_CODENAME=Reze \
-            REZEOS_BASE=LineageOS-23.2-20260524-VANILLA-EXT4-GSI \
-            bash scripts/modify-system.sh
+          sudo env SYSTEM_DIR="$SYSTEM_DIR" REZEOS_NAME=RezeOS REZEOS_VERSION=1.0-BETA REZEOS_CODENAME=Reze REZEOS_BASE=RezeOS-23.2-20260524-VANILLA-EXT4-GSI WALLPAPER_ASSET="$PWD/assets/reze-wallpaper.webp" bash scripts/modify-system.sh
 
           PROP="$SYSTEM_DIR/build.prop"
-          if [ ! -f "$PROP" ]; then
-            PROP="$SYSTEM_DIR/system/build.prop"
-          fi
-          echo "Verified RezeOS properties in: $PROP"
+          [ -f "$PROP" ] || PROP="$SYSTEM_DIR/system/build.prop"
           sudo test -s "$PROP"
           sudo grep -Fx 'ro.rezeos.name=RezeOS' "$PROP"
           sudo grep -Fx 'ro.rezeos.version=1.0-BETA' "$PROP"
           sudo grep -Fx 'ro.rezeos.codename=Reze' "$PROP"
-          sudo grep -Fx 'ro.rezeos.base=LineageOS-23.2-20260524-VANILLA-EXT4-GSI' "$PROP"
+          sudo grep -Fx 'ro.rezeos.base=RezeOS-23.2-20260524-VANILLA-EXT4-GSI' "$PROP"
+          sudo grep -Fx 'ro.product.brand=RezeOS' "$PROP"
+          sudo grep -Fx 'ro.product.manufacturer=RezeOS' "$PROP"
+          sudo grep -Fx 'ro.product.model=RezeOS' "$PROP"
+          sudo grep -Fx 'ro.product.name=RezeOS' "$PROP"
+          sudo grep -Fx 'ro.product.device=reze' "$PROP"
+          sudo grep -Fx 'ro.build.display.id=RezeOS-1.0-BETA' "$PROP"
+          sudo grep -Fx 'ro.config.wallpaper=/system/media/rezeos_default.webp' "$PROP"
+          sudo test -s "$SYSTEM_DIR/system/media/rezeos_default.webp"
+          ! sudo grep -qi 'lineageos' "$PROP"
 
       - name: Rebuild modified system image
         run: |
           set -euo pipefail
-          rm -f work/rebuilt.raw.img work/system.img
-
-          if [ "$FS_TYPE" = 'ext4' ]; then
-            echo '--- flushing and unmounting modified ext4 filesystem ---'
+          if [ "$FS_TYPE" = ext4 ]; then
             sync
             sudo umount work/mnt
-
-            echo '--- final ext4 filesystem check ---'
             sudo e2fsck -fy work/system.raw.img
             mv work/system.raw.img work/rebuilt.raw.img
           else
-            echo '--- rebuilding EROFS image ---'
             mkfs.erofs -zlz4hc work/rebuilt.raw.img work/root
           fi
-
-          echo '--- rebuilt image ---'
           file work/rebuilt.raw.img
 
       - name: Repack Android sparse image
         run: |
           set -euo pipefail
           img2simg work/rebuilt.raw.img work/system.img
-          file work/system.img
           xz -T0 -9 -c work/system.img > out/RezeOS-GSI-arm64-ab.img.xz
           sha256sum out/RezeOS-GSI-arm64-ab.img.xz > out/SHA256SUMS
 
