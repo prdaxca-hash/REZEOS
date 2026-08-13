@@ -6,16 +6,20 @@ set -euo pipefail
 : "${REZEOS_CODENAME:?REZEOS_CODENAME required}"
 : "${REZEOS_BASE:?REZEOS_BASE required}"
 WALLPAPER_ASSET="${WALLPAPER_ASSET:-}"
+
 mapfile -t PROP_FILES < <(find "$SYSTEM_DIR" -type f -name 'build.prop' -print | sort)
 [ "${#PROP_FILES[@]}" -gt 0 ] || { echo "No build.prop found" >&2; exit 1; }
+
 set_prop() {
   local prop="$1" key="$2" value="$3"
   sed -i "/^${key}=.*/d" "$prop"
   printf '%s=%s\n' "$key" "$value" >> "$prop"
 }
+
 for PROP in "${PROP_FILES[@]}"; do
   sed -i '/^ro\.rezeos\./d' "$PROP"
   sed -i -E 's/Lineage[[:space:]_-]*OS/RezeOS/gI' "$PROP"
+
   case "$PROP" in
     */system/build.prop|*/product/build.prop|*/vendor/build.prop|*/odm/build.prop|*/system_ext/build.prop|*/build.prop)
       set_prop "$PROP" ro.product.brand "$REZEOS_NAME"
@@ -25,16 +29,30 @@ for PROP in "${PROP_FILES[@]}"; do
       set_prop "$PROP" ro.product.device reze
       ;;
   esac
+
   set_prop "$PROP" ro.rezeos.name "$REZEOS_NAME"
   set_prop "$PROP" ro.rezeos.version "$REZEOS_VERSION"
   set_prop "$PROP" ro.rezeos.codename "$REZEOS_CODENAME"
   set_prop "$PROP" ro.rezeos.base "$REZEOS_BASE"
   set_prop "$PROP" ro.build.display.id "$REZEOS_NAME-$REZEOS_VERSION"
 done
-if grep -RqiE 'lineage[[:space:]_-]*os' "${PROP_FILES[@]}"; then
-  echo "Residual LineageOS branding remains in build.prop" >&2
-  exit 1
+
+if [ -n "$WALLPAPER_ASSET" ]; then
+  [ -f "$WALLPAPER_ASSET" ] || { echo "Wallpaper asset not found: $WALLPAPER_ASSET" >&2; exit 1; }
+  WALLPAPER_DST="$SYSTEM_DIR/system/media/rezeos_default.jpg"
+  mkdir -p "$(dirname "$WALLPAPER_DST")"
+  install -o 0 -g 0 -m 0644 "$WALLPAPER_ASSET" "$WALLPAPER_DST"
+  echo "Installed RezeOS wallpaper: $WALLPAPER_DST"
 fi
+
+for PROP in "${PROP_FILES[@]}"; do
+  if grep -qiE 'lineage[[:space:]_-]*os' "$PROP"; then
+    echo "Residual LineageOS branding remains in $PROP" >&2
+    grep -niE 'lineage[[:space:]_-]*os' "$PROP" >&2 || true
+    exit 1
+  fi
+done
+
 echo "Modified RezeOS properties:"
 for PROP in "${PROP_FILES[@]}"; do
   echo "--- $PROP"
