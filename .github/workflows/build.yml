@@ -16,7 +16,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt update
-          sudo apt install -y curl xz-utils e2fsprogs file android-sdk-libsparse-utils
+          sudo apt install -y curl xz-utils e2fsprogs erofs-utils file android-sdk-libsparse-utils
 
       - name: Download Axion GSI
         run: |
@@ -27,7 +27,7 @@ jobs:
           xz -dc work/base.img.xz > work/base.img
           file work/base.img
 
-      - name: Convert sparse image to raw ext4
+      - name: Convert sparse image and detect filesystem
         run: |
           set -euo pipefail
           if file work/base.img | grep -qi 'Android sparse image'; then
@@ -35,31 +35,72 @@ jobs:
           else
             cp work/base.img work/system.raw.img
           fi
+
+          echo '--- filesystem ---'
           file work/system.raw.img
-          sudo e2fsck -fy work/system.raw.img
+
+          if file work/system.raw.img | grep -qi 'EROFS filesystem'; then
+            echo 'FS_TYPE=erofs' >> "$GITHUB_ENV"
+          elif file work/system.raw.img | grep -qi 'ext4 filesystem'; then
+            echo 'FS_TYPE=ext4' >> "$GITHUB_ENV"
+          else
+            echo 'Unsupported filesystem:'
+            file work/system.raw.img
+            exit 2
+          fi
+
+      - name: Prepare filesystem for modification
+        run: |
+          set -euo pipefail
+          rm -rf work/root work/mnt
+          mkdir -p work/root work/mnt
+
+          if [ "$FS_TYPE" = "ext4" ]; then
+            sudo e2fsck -fy work/system.raw.img
+            sudo mount -o loop,rw work/system.raw.img work/mnt
+            sudo cp -a work/mnt/. work/root/
+            sudo umount work/mnt
+          else
+            echo 'Extracting EROFS image'
+            sudo fsck.erofs --extract=work/root work/system.raw.img
+          fi
+
+          sudo chown -R "$USER:$USER" work/root
+          find work/root -maxdepth 2 -type d | head -50
 
       - name: Apply RezeOS modifications
         run: |
           set -euo pipefail
-          sudo mkdir -p work/mnt
-          sudo mount -o loop,rw work/system.raw.img work/mnt
-          trap 'sudo umount work/mnt || true' EXIT
-
-          SYSTEM_DIR="$PWD/work/mnt" \
+          SYSTEM_DIR="$PWD/work/root" \
           REZEOS_NAME=RezeOS \
           REZEOS_VERSION=1.0-BETA \
           REZEOS_CODENAME=Reze \
           bash scripts/modify-system.sh
 
-          sync
-          sudo umount work/mnt
-          trap - EXIT
-          sudo e2fsck -fy work/system.raw.img
+      - name: Rebuild system image
+        run: |
+          set -euo pipefail
+          rm -f work/rebuilt.raw.img work/system.img
+
+          if [ "$FS_TYPE" = "ext4" ]; then
+            sudo mount -o loop,rw work/system.raw.img work/mnt
+            sudo cp -a work/root/. work/mnt/
+            sync
+            sudo umount work/mnt
+            sudo e2fsck -fy work/system.raw.img
+            mv work/system.raw.img work/rebuilt.raw.img
+          else
+            echo 'Rebuilding EROFS image'
+            mkfs.erofs -zlz4hc work/rebuilt.raw.img work/root
+          fi
+
+          echo '--- rebuilt image ---'
+          file work/rebuilt.raw.img
 
       - name: Repack Android sparse image
         run: |
           set -euo pipefail
-          img2simg work/system.raw.img work/system.img
+          img2simg work/rebuilt.raw.img work/system.img
           file work/system.img
           xz -T0 -9 -c work/system.img > out/RezeOS-GSI-arm64-ab.img.xz
           sha256sum out/RezeOS-GSI-arm64-ab.img.xz > out/SHA256SUMS
