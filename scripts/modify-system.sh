@@ -5,6 +5,7 @@ set -euo pipefail
 : "${REZEOS_NAME:?REZEOS_NAME required}"
 : "${REZEOS_VERSION:?REZEOS_VERSION required}"
 : "${REZEOS_CODENAME:?REZEOS_CODENAME required}"
+: "${REZEOS_BASE:?REZEOS_BASE required}"
 
 # A mounted GSI system image exposes the Android system root directly.
 # Depending on the build layout, build.prop may be at the root of the image.
@@ -27,5 +28,5 @@ cat > "$SYSTEM_DIR/etc/rezeos/build-info" <<EOF
 NAME=${REZEOS_NAME}
 VERSION=${REZEOS_VERSION}
 CODENAME=${REZEOS_CODENAME}
-BASE=AxionOS-2.8-GSI-20260802
+BASE=${REZEOS_BASE}
 EOF
